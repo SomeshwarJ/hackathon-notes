@@ -1,0 +1,176 @@
+✅ Goal:
+Multiple banking routes (view_balance, transfer_funds, pay_bills)
+
+Each protected with dynamic authentication
+
+Agentic AI (using LangChain) determines the best auth method based on context and IFM score.
+
+🧠 High-Level Design
+Initial Login Context → username, IP, geo, typing behavior
+
+Agent gathers context, calculates IFM score, and recommends an auth type
+
+FastAPI routes are protected using the recommended auth type
+
+📁 Project Structure
+bash
+Copy
+Edit
+banking_ai_auth/
+├── main.py
+├── auth_agent.py         # Agentic AI logic
+├── tools.py              # Tool functions for AI agent
+├── routes/
+│   ├── view_balance.py
+│   ├── transfer_funds.py
+│   └── pay_bills.py
+└── middleware.py         # Simulates enforcing auth method
+1. tools.py
+python
+Copy
+Edit
+from typing import Dict
+import random
+
+def get_context(username: str, action: str) -> Dict:
+    return {
+        "username": username,
+        "ip_address": "103.0.113." + str(random.randint(1, 255)),
+        "geolocation": random.choice(["IN", "US", "CN"]),
+        "prev_login_date": "2025-06-10",
+        "is_typing_behavior_login": random.choice([True, False]),
+        "action": action
+    }
+
+def analyze_risk(context: Dict) -> Dict:
+    score = 0
+    if context["geolocation"] not in ["IN", "US"]:
+        score += 40
+    if not context["is_typing_behavior_login"]:
+        score += 30
+    return {"ifm_score": score}
+
+def decide_policy(ifm_score: int, action: str) -> str:
+    if action == "view_balance" and ifm_score < 30:
+        return "basic_auth"
+    elif action == "transfer_funds" and ifm_score < 60:
+        return "otp_auth"
+    return "biometric_auth"
+2. auth_agent.py
+python
+Copy
+Edit
+from langchain.agents import Tool, initialize_agent, AgentType
+from langchain.llms import OpenAI
+from tools import get_context, analyze_risk, decide_policy
+
+tools = [
+    Tool(name="get_context", func=get_context, description="Get context info"),
+    Tool(name="analyze_risk", func=analyze_risk, description="Score the login risk"),
+    Tool(name="decide_policy", func=decide_policy, description="Suggest best auth method")
+]
+
+llm = OpenAI(temperature=0)
+agent = initialize_agent(tools, llm, agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION, verbose=True)
+
+def recommend_auth(username: str, action: str):
+    prompt = f"Get best authentication for user '{username}' who wants to '{action}'."
+    result = agent.run(prompt)
+    return result
+3. middleware.py (Simulated auth enforcement)
+python
+Copy
+Edit
+from fastapi import Request, HTTPException
+
+def enforce_auth(request: Request, required_auth: str):
+    simulated_token = request.headers.get("X-Auth-Token")
+
+    # Simulate logic
+    if required_auth == "basic_auth" and simulated_token == "password123":
+        return True
+    if required_auth == "otp_auth" and simulated_token == "otp456":
+        return True
+    if required_auth == "biometric_auth" and simulated_token == "biometric-pass":
+        return True
+    raise HTTPException(status_code=401, detail=f"{required_auth} failed")
+4. Routes (routes/view_balance.py, same pattern for others)
+python
+Copy
+Edit
+from fastapi import APIRouter, Request
+from middleware import enforce_auth
+from auth_agent import recommend_auth
+
+router = APIRouter()
+
+@router.get("/view_balance")
+async def view_balance(username: str, request: Request):
+    auth_type = recommend_auth(username, "view_balance")
+    enforce_auth(request, auth_type)
+    return {"message": f"Balance for {username} is ₹10,000", "auth_type_used": auth_type}
+python
+Copy
+Edit
+# routes/transfer_funds.py
+from fastapi import APIRouter, Request
+from middleware import enforce_auth
+from auth_agent import recommend_auth
+
+router = APIRouter()
+
+@router.post("/transfer_funds")
+async def transfer_funds(username: str, request: Request):
+    auth_type = recommend_auth(username, "transfer_funds")
+    enforce_auth(request, auth_type)
+    return {"message": f"Funds transferred for {username}", "auth_type_used": auth_type}
+5. main.py
+python
+Copy
+Edit
+from fastapi import FastAPI
+from routes import view_balance, transfer_funds
+
+app = FastAPI()
+app.include_router(view_balance.router)
+app.include_router(transfer_funds.router)
+
+@app.get("/")
+def root():
+    return {"msg": "Banking App with Agentic AI"}
+🧪 Simulated Requests
+✅ Request
+vbnet
+Copy
+Edit
+GET /view_balance?username=alice
+Header: X-Auth-Token: password123
+✅ Response
+json
+Copy
+Edit
+{
+  "message": "Balance for alice is ₹10,000",
+  "auth_type_used": "basic_auth"
+}
+🧠 Agentic Decisioning
+Every route dynamically consults the Agent:
+
+Gathers context
+
+Analyzes risk
+
+Recommends the right auth method
+
+✅ Next Up?
+Would you like me to:
+
+Add a DB layer for storing users & IFM history?
+
+Implement real OTP/email/Biometric flows?
+
+Add a React dashboard to test all routes?
+
+Deploy this with Docker?
+
+Let me know and I’ll scaffold those next.
